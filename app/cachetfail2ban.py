@@ -5,21 +5,34 @@ import os
 import json
 import jsonschema
 import re
+import time
 import subprocess
 from conf import schema
 from jsonschema import validate
 from clize import clize, run
+import cachetclient.cachet as cachet
+
 
 jaillist_pattern = re.compile('.*- Jail list:\s*(.+)')
 jailstatus_pattern = re.compile('.*- Currently banned:\s*(\d+)')
 
 
-def collect_status(config):
+def collect_status(conf):
+
+    metrics = cachet.Metrics(
+        endpoint=conf['api_url'], api_token=conf['api_token'])
+    json_metrics = json.loads(metrics.get())
+
+    # dict where key is id and value is component struct
+    metric_dict = dict()
+    for metric in json_metrics['data']:
+        metric['processed'] = False
+        metric_dict[metric['name']] = metric
 
     # retrieve list of jails
     jail_list = []
     output = str(subprocess.check_output(
-        ['cat', 'fail2ban-client_status.txt'], universal_newlines=True))
+        ['fail2ban-client', 'status'], universal_newlines=True))
     for line in output.splitlines():
         r = re.match(jaillist_pattern, line)
         if r:
@@ -28,11 +41,22 @@ def collect_status(config):
     # retrieve jail status
     for jail in jail_list:
         output = str(subprocess.check_output(
-            ['cat', 'fail2ban-client_status_sshd.txt'], universal_newlines=True))
+            ['fail2ban-client', 'status', jail], universal_newlines=True))
         for line in output.splitlines():
             r = re.match(jailstatus_pattern, line)
             if r:
-                print('Jail {} : {}'.format(jail, r.group(1)))
+                metric_name = 'fail2ban-' + jail
+                if metric_name in metric_dict:
+                    metric_dict[metric_name]['processed'] = True
+                    metric_dict[metric_name]['newvalue'] = int(r.group(1))
+
+    # send updates to cachet API
+    points = cachet.Points(
+        endpoint=conf['api_url'], api_token=conf['api_token'])
+
+    for metric in metric_dict.values():
+        if metric['processed']:
+            points.post(id=metric['id'], value=metric['newvalue'])
 
 
 def load_json(filename):
