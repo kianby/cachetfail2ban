@@ -3,8 +3,12 @@
 
 import os
 import json
+import jsonschema
 import re
 import subprocess
+from conf import schema
+from jsonschema import validate
+from clize import clize, run
 
 jaillist_pattern = re.compile('.*- Jail list:\s*(.+)')
 jailstatus_pattern = re.compile('.*- Currently banned:\s*(\d+)')
