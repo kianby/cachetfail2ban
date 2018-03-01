@@ -16,6 +16,8 @@ import cachetclient.cachet as cachet
 jaillist_pattern = re.compile('.*- Jail list:\s*(.+)')
 jailstatus_pattern = re.compile('.*- Currently banned:\s*(\d+)')
 
+def log(msg):
+    print('{} {}'.format(time.strftime('%y-%m-%d %H:%M:%S'), msg))
 
 def collect_status(conf):
 
@@ -49,14 +51,17 @@ def collect_status(conf):
                 if metric_name in metric_dict:
                     metric_dict[metric_name]['processed'] = True
                     metric_dict[metric_name]['newvalue'] = int(r.group(1))
+                    log('collect jail {} => {}'.format(jail, r.group(1)))
 
     # send updates to cachet API
     points = cachet.Points(
         endpoint=conf['api_url'], api_token=conf['api_token'])
 
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
     for metric in metric_dict.values():
         if metric['processed']:
-            points.post(id=metric['id'], value=metric['newvalue'])
+            points.post(id=metric['id'], value=metric['newvalue'], created_at=now, updated_at=now)
+            log('post point {} at {} ({})'.format(metric['newvalue'], now, metric))
 
 
 def load_json(filename):
